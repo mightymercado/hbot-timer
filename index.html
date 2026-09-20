@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Session timer for hyperbaric sessions (HBOT): timed O₂ periods with air breaks and mask-switch countdowns, or plain chamber-air sessions, with manual override and an automatic session log.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f1f3f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1013" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="HBOT Timer">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>HBOT Timer</title>
+<style>:root{color-scheme:light dark;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}</style>
+</head>
+<body>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&display=swap">
+<style>
+:root{
+  --bg:#f1f3f5; --fg:#15181b; --muted:#6b737a; --line:#d9dde1; --card:#ffffff;
+  --o2:#1d4fd8; --air:#0f7a5a; --sw:#b4640a; --done:#4b3fa6; --idle:#3c4249; --on:#ffffff;
+  --btn:#15181b; --btn-fg:#ffffff; --focus:#1d4fd8; --danger:#b3261e;
+  --phase:var(--idle);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1013; --fg:#eceef0; --muted:#8c959c; --line:#2b3238; --card:#171a1e;
+    --o2:#2f62e0; --air:#168f6a; --sw:#c9770f; --done:#5c4fc0; --idle:#2a3036;
+    --btn:#eceef0; --btn-fg:#0e1013; --focus:#8ab4ff; --danger:#ff7b72;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1013; --fg:#eceef0; --muted:#8c959c; --line:#2b3238; --card:#171a1e;
+  --o2:#2f62e0; --air:#168f6a; --sw:#c9770f; --done:#5c4fc0; --idle:#2a3036;
+  --btn:#eceef0; --btn-fg:#0e1013; --focus:#8ab4ff; --danger:#ff7b72;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{overscroll-behavior:none}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Bricolage Grotesque",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-optical-sizing:auto;font-size:15px;line-height:1.35;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+main{max-width:520px;margin:0 auto;padding:12px 16px 20px;display:flex;flex-direction:column;gap:16px;min-height:100vh;min-height:100dvh}
+.top{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-variant-numeric:tabular-nums;padding:2px 2px 0}
+.top b{color:var(--fg);font-weight:600;display:flex;align-items:center;gap:9px}
+.top b::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--phase)}
+.banner{background:var(--sw);color:var(--on);border-radius:12px;padding:10px 14px;font-size:13px;font-weight:500;text-align:center}
+.stage{border-radius:22px;background:var(--phase);color:var(--on);padding:18px 20px 18px;min-height:46vh;display:flex;flex-direction:column;justify-content:space-between;gap:12px;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.kicker{font-size:12px;letter-spacing:.16em;text-transform:uppercase;font-weight:600;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{flex:none;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;background:var(--on);color:var(--phase);border-radius:999px;padding:7px 12px 6px;line-height:1}
+.mid{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0 2px}
+.clock{display:flex;justify-content:center;font-size:clamp(64px,28vw,150px);font-weight:500;line-height:.92;font-variant-numeric:tabular-nums}
+.clock .c{display:inline-block;width:.6em;text-align:center}
+.clock .colon{width:.28em;transform:translateY(-.05em)}
+.stage.dim .clock{opacity:.55}
+.name{font-size:clamp(15px,4.2vw,19px);font-weight:500;text-align:center;opacity:.95;text-wrap:balance;line-height:1.3}
+.bar{height:3px;border-radius:2px;background:rgba(255,255,255,.28);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--on)}
+.controls{display:grid;grid-template-columns:1fr 1.45fr 1fr;gap:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;height:64px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;cursor:pointer;padding:0 12px;touch-action:manipulation;min-width:0}
+.btn svg{width:18px;height:18px;flex:none}
+.btn.noicon svg{display:none}
+.btn .lbl{display:flex;flex-direction:column;align-items:flex-start;min-width:0;line-height:1.15;gap:2px}
+#next .lbl{align-items:flex-end}
+.btn b{font-size:clamp(14px,4vw,16px);font-weight:600}
+.btn,.stepper button,.modes button,.bottom button,.seg,.labels span{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.btn small{font-size:11px;color:var(--muted);letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.btn.primary{background:var(--btn);color:var(--btn-fg);border-color:var(--btn)}
+.btn.primary .lbl{align-items:center}
+.btn.primary small{color:inherit;opacity:.7}
+.btn:disabled{opacity:.35;cursor:default}
+.btn:focus-visible,input:focus-visible,.bottom button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.track{display:flex;flex-direction:column;gap:7px}
+.timeline{display:flex;gap:4px;height:10px}
+.seg{position:relative;flex:1 1 0px;height:34px;margin:-12px 0;cursor:pointer;min-width:10px}
+.seg.o2{--c:var(--o2)} .seg.air,.seg.chamber{--c:var(--air)}
+.seg.fixed,.labels span.fixed{cursor:default}
+.seg::before{content:"";position:absolute;left:0;right:0;top:12px;height:10px;border-radius:999px;background:var(--line)}
+.seg i{position:absolute;top:12px;left:0;height:10px;width:0;border-radius:999px;background:var(--c)}
+.seg.cur::before{background:var(--card);box-shadow:inset 0 0 0 1px var(--c)}
+.labels{display:flex;gap:4px;font-size:11px;color:var(--muted);letter-spacing:.02em}
+.labels span{flex:1 1 0px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer;padding:2px 0}
+.labels span.cur{color:var(--fg);font-weight:600}
+.labels span.tight{color:transparent}
+.periods{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding-top:4px}
+.stepper{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:999px;background:var(--card);padding:2px}
+.stepper button{width:44px;height:36px;border:0;border-radius:999px;background:transparent;color:var(--fg);font:inherit;font-size:19px;line-height:1;cursor:pointer;touch-action:manipulation}
+.stepper button:disabled{opacity:.3;cursor:default}
+.stepper button:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.stepper b{min-width:28px;text-align:center;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--fg);letter-spacing:0}
+.modes{display:flex;gap:2px;border:1px solid var(--line);border-radius:999px;background:var(--card);padding:2px}
+.modes button{height:36px;border:0;border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;letter-spacing:.01em;padding:0 14px;cursor:pointer;touch-action:manipulation;white-space:nowrap}
+.modes button[aria-pressed="true"]{background:var(--btn);color:var(--btn-fg)}
+.modes button:disabled{cursor:default}
+.modes.locked{opacity:.5}
+.modes button:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr;border:1px solid var(--line);border-radius:14px;background:var(--card);overflow:hidden}
+.stat{padding:12px 12px 11px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.stat+.stat{border-left:1px solid var(--line)}
+.stat small{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.stat b{font-size:clamp(15px,4.6vw,19px);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+details{border-top:1px solid var(--line);color:var(--muted)}
+summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 2px;color:var(--fg);font-weight:600;font-size:14px}
+summary::-webkit-details-marker{display:none}
+summary span{margin-left:auto;font-weight:400;color:var(--muted);font-size:12px;letter-spacing:.04em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+summary::after{content:"";flex:none;width:7px;height:7px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(45deg);margin:0 4px 3px 0}
+details[open] summary::after{transform:rotate(-135deg);margin-bottom:-3px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;padding:2px 0 4px}
+.field{display:flex;flex-direction:column;gap:6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.field input[type="number"]{font:inherit;font-size:17px;font-weight:500;height:46px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);padding:0 12px;width:100%;font-variant-numeric:tabular-nums}
+.field input:disabled{opacity:.5}
+.toggles{display:flex;gap:0 24px;flex-wrap:wrap;padding:4px 0 0}
+.toggle{display:flex;align-items:center;gap:10px;min-height:44px;font-size:15px;color:var(--fg);cursor:pointer}
+.toggle input{width:22px;height:22px;margin:0;accent-color:var(--fg)}
+.note{margin:10px 0 2px;font-size:12px;line-height:1.55}
+.bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin-top:auto;padding-top:4px}
+.bottom button{height:44px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--fg);font:inherit;font-size:13px;font-weight:500;padding:0 16px;cursor:pointer}
+.bottom button.armed{border-color:var(--danger);color:var(--danger)}
+.field.wide{grid-column:1/-1}
+.hstats{margin:2px 0 8px}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);font-size:13px}
+.hist li:first-child{border-top:0}
+.hist .when{font-weight:600;color:var(--fg);font-variant-numeric:tabular-nums}
+.hist .what{grid-column:1;color:var(--muted);font-variant-numeric:tabular-nums}
+.hist button{grid-column:2;grid-row:1/3;height:34px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font:inherit;font-size:12px;padding:0 12px;cursor:pointer;touch-action:manipulation}
+.hist button.armed{border-color:var(--danger);color:var(--danger)}
+.hist li.empty{display:block;color:var(--muted);padding:8px 0 2px}
+@media (max-width:380px){
+  .labels{font-size:10px;letter-spacing:0}
+  .modes button{padding:0 11px}
+}
+@media (max-width:400px){
+  .controls{grid-template-columns:1fr 1.3fr 1fr;gap:8px}
+  .btn{padding:0 8px;border-radius:14px}
+  .btn svg{width:16px;height:16px}
+  .stat{padding:11px 9px 10px}
+}
+@media (max-height:740px){
+  main{gap:12px;padding-bottom:20px}
+  .stage{min-height:40vh;padding:16px 18px}
+}
+@media (max-height:500px){
+  main{gap:10px;padding:8px 16px 16px}
+  .stage{min-height:0;padding:12px 16px;gap:8px}
+  .mid{padding:0;gap:6px}
+  .btn{height:56px}
+}
+@media (prefers-reduced-motion:no-preference){
+  .stage{transition:background-color .25s ease}
+  .seg i,.bar i{transition:width .25s linear}
+  summary::after{transition:transform .2s ease,margin .2s ease}
+}
+</style>
+<main data-phase="idle">
+  <div class="top"><b>HBOT Timer</b><span id="now"></span></div>
+  <div class="banner" id="banner" hidden>Reopened mid-session · tap anywhere to re-enable sound</div>
+  <section class="stage dim" id="stage">
+    <div class="row"><div class="kicker" id="kicker">Ready</div><div class="chip" id="chip">Mask off</div></div>
+    <div class="mid">
+      <div class="clock" id="clock"></div>
+      <div class="name" id="name">Pressurize, then press Start when the mask goes on</div>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+  </section>
+  <div class="controls">
+    <button id="prev" class="btn noicon" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="lbl"><b>Pressurize</b><small>stopwatch</small></span></button>
+    <button id="main" class="btn primary" type="button"><span class="lbl"><b>Start</b><small>O₂ 1 · 20:00</small></span></button>
+    <button id="next" class="btn" type="button" disabled><span class="lbl"><b>Next</b><small>—</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  </div>
+  <div class="track">
+    <div class="timeline" id="timeline"></div>
+    <div class="labels" id="labels"></div>
+    <div class="periods"><span id="mode-lbl">Breathing</span><div class="modes" id="modes" role="group" aria-labelledby="mode-lbl"><button id="mode-o2" type="button" aria-pressed="true">O₂ mask</button><button id="mode-air" type="button" aria-pressed="false">Chamber air</button></div></div>
+    <div class="periods"><span id="step-lbl">O₂ periods</span><div class="stepper"><button id="cyc-minus" type="button" aria-label="Remove an O₂ period">−</button><b id="cyc-n">3</b><button id="cyc-plus" type="button" aria-label="Add an O₂ period">+</button></div></div>
+  </div>
+  <div class="stats">
+    <div class="stat"><small>Elapsed</small><b id="elapsed">0:00</b></div>
+    <div class="stat"><small id="endsLbl">Total</small><b id="ends">70:12</b></div>
+    <div class="stat"><small>Remaining</small><b id="remaining">70:12</b></div>
+  </div>
+  <details>
+    <summary>Settings<span id="plan">3 × 20 min O₂ · 5 min air · 70:12</span></summary>
+    <div class="fields">
+      <label class="field o2f">O₂ period, min<input type="number" id="s-o2" min="1" max="120" step="1" inputmode="numeric"></label>
+      <label class="field o2f">Air break, min<input type="number" id="s-air" min="1" max="60" step="1" inputmode="numeric"></label>
+      <label class="field o2f">Mask switch, sec<input type="number" id="s-sw" min="0" max="60" step="1" inputmode="numeric"></label>
+      <label class="field o2f">O₂ periods<input type="number" id="s-cycles" min="1" max="10" step="1" inputmode="numeric"></label>
+      <label class="field wide airf" hidden>Chamber air session, min<input type="number" id="s-chamber" min="1" max="240" step="1" inputmode="numeric"></label>
+      <label class="field wide">Chamber pressure, ATA (optional)<input type="number" id="s-ata" min="1" max="3" step="0.05" inputmode="decimal" placeholder="e.g. 1.5"></label>
+    </div>
+    <div class="toggles">
+      <label class="toggle"><input type="checkbox" id="s-sound">Beeps</label>
+      <label class="toggle"><input type="checkbox" id="s-voice">Voice announcements</label>
+    </div>
+    <p class="note">The session is saved on every change and runs on wall-clock time, so closing or reloading the page and coming back resumes exactly where it would have been. Choose O₂ mask or Chamber air under the timeline before you start. O₂ durations lock while a session is running; the number of O₂ periods can be changed at any time, even mid-session (periods already started stay). Chamber air is one continuous session with no mask and no breaks, and its length can also be changed at any time without restarting the countdown. Chamber pressure is optional: once entered it is remembered and recorded with each session, and it can be changed at any time. Keep this page in front so the screen stays awake and cues fire on time; if beeps are silent on iPhone, flip the ringer switch on. On a phone, add this page to your Home Screen (Share → Add to Home Screen) to run it full-screen like an app. While a session runs, the Lock Screen's Now Playing card shows the countdown with pause and skip buttons. Keyboard: Space start/pause, ← → prev/next. Tap a bar segment to jump to that phase.</p>
+  </details>
+  <details>
+    <summary>Sessions<span id="logsum">none yet</span></summary>
+    <div class="stats hstats">
+      <div class="stat"><small>Sessions</small><b id="h-count">0</b></div>
+      <div class="stat"><small id="h-o2l">O₂ time</small><b id="h-o2">0 min</b></div>
+      <div class="stat"><small>Last 30 days</small><b id="h-30">0</b></div>
+    </div>
+    <ul class="hist" id="hist"></ul>
+    <p class="note">Every completed session is logged here automatically with its pressure and protocol. The log is stored in this browser only. Tap Remove twice to delete an entry.</p>
+  </details>
+  <div class="bottom"><span id="status"></span><button id="reset" type="button">Reset</button></div>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const DEF = { mode: 'o2', o2: 20, air: 5, sw: 3, cycles: 3, chamber: 60, ata: null, sound: true, voice: true };
+  const KEY_STATE = 'hbot.state', KEY_SETTINGS = 'hbot.settings', KEY_HIST = 'hbot.history';
+
+  const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } };
+  let lastSavedJson = '';
+  const save = () => {
+    try {
+      const j = JSON.stringify(state);
+      if (j !== lastSavedJson) { localStorage.setItem(KEY_STATE, j); lastSavedJson = j; }
+      localStorage.setItem(KEY_SETTINGS, JSON.stringify(settings));
+    } catch (e) {}
+  };
+  const clamp = (v, lo, hi, d) => { v = Math.round(Number(v)); return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+  const clampF = (v, lo, hi, d) => { v = Math.round(Number(v) * 100) / 100; return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; };
+
+  let settings = Object.assign({}, DEF, load(KEY_SETTINGS, {}));
+  const sanitize = () => {
+    settings.o2 = clamp(settings.o2, 1, 120, 20); settings.air = clamp(settings.air, 1, 60, 5);
+    settings.sw = clamp(settings.sw, 0, 60, 3); settings.cycles = clamp(settings.cycles, 1, 10, 3);
+    settings.mode = settings.mode === 'air' ? 'air' : 'o2'; settings.chamber = clamp(settings.chamber, 1, 240, 60); // 'air' = chamber air only: one continuous session, no mask
+    settings.ata = settings.ata === null || settings.ata === '' || settings.ata === undefined ? null : clampF(settings.ata, 1, 3, null); // unset until the user enters one
+    settings.sound = settings.sound !== false; settings.voice = settings.voice !== false;
+  };
+  sanitize();
+
+  // Completed sessions, oldest first: { began, ended, ata, o2, air, sw, cycles, planned } for O₂ sessions and { began, ended, ata, mode: 'air', chamber, planned }
+  // for chamber-air ones (planned = protocol length in seconds).
+  const loadHistory = () => { const h = load(KEY_HIST, []); return Array.isArray(h) ? h.filter(x => x && typeof x.began === 'number' && typeof x.ended === 'number').sort((a, b) => a.ended - b.ended) : []; };
+  let history = loadHistory();
+  const saveHistory = () => { try { localStorage.setItem(KEY_HIST, JSON.stringify(history)); } catch (e) {} };
+
+  // Session = list of steps. Each step may start with a short "switch mask" countdown (sw) before its main duration (dur).
+  // Chamber-air mode is a single step: the whole session at pressure, no mask.
+  const build = s => {
+    if (s.mode === 'air') return [{ kind: 'chamber', n: 1, of: 1, label: 'Chamber air', short: 'Air', tl: 'Chamber air', dur: s.chamber * 60, sw: 0 }];
+    const a = [];
+    for (let i = 0; i < s.cycles; i++) {
+      if (i > 0) a.push({ kind: 'air', n: i, of: s.cycles - 1, label: 'Air break ' + i, short: 'Air ' + i, dur: s.air * 60, sw: s.sw });
+      a.push({ kind: 'o2', n: i + 1, of: s.cycles, label: 'Oxygen ' + (i + 1), short: 'O₂ ' + (i + 1), dur: s.o2 * 60, sw: i === 0 ? 0 : s.sw });
+    }
+    return a;
+  };
+  let steps = build(settings);
+
+  // All timing is absolute wall-clock timestamps: startedAt = when the current sub-phase began.
+  // Reopening the page any time later reconstructs exactly where the session would be.
+  const fresh = () => ({ status: 'idle', step: 0, sub: 'main', startedAt: 0, pausedAt: 0, swStart: 0, doneAt: 0, beganAt: 0 });
+  let state = fresh();
+  const adopt = s => {
+    if (!s || typeof s !== 'object') return false;
+    const now = Date.now(), ref = Math.max(s.startedAt || 0, s.pausedAt || 0, s.doneAt || 0);
+    const active = s.status === 'running' || s.status === 'paused';
+    if (active && now - ref < 12 * 3600e3 || s.status === 'done' && now - ref < 3 * 3600e3) {
+      state = Object.assign(fresh(), s);
+    } else if (s.swStart && now - s.swStart < 2 * 3600e3) {
+      state = fresh(); state.swStart = s.swStart;
+    } else return false;
+    if (!(state.step >= 0 && state.step < steps.length)) state.step = Math.max(0, steps.length - 1);
+    if (state.sub !== 'sw' || !steps[state.step].sw) state.sub = 'main';
+    return true;
+  };
+  const restored = adopt(load(KEY_STATE, null)) && (state.status === 'running' || state.status === 'paused');
+  lastSavedJson = JSON.stringify(state); // nothing to write back until something actually changes
+
+  const stepLen = st => st.sw + st.dur;
+  const total = () => steps.reduce((a, s) => a + stepLen(s), 0);
+  const cur = () => steps[state.step];
+  const subDur = () => (state.sub === 'sw' ? cur().sw : cur().dur);
+  const key = () => state.step + ':' + state.sub;
+  const nowRef = () => (state.status === 'paused' ? state.pausedAt : Date.now());
+  const subElapsedMs = () => Math.max(0, Math.min(subDur() * 1000, nowRef() - state.startedAt));
+  const stepElapsed = () => (state.sub === 'main' ? cur().sw : 0) + subElapsedMs() / 1000;
+  const sessionElapsed = () => {
+    if (state.status === 'idle') return 0;
+    if (state.status === 'done') return total();
+    let e = 0; for (let i = 0; i < state.step; i++) e += stepLen(steps[i]);
+    return e + stepElapsed();
+  };
+  const fmt = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const fmtAta = a => String(Math.round(a * 100) / 100);
+  const ataLabel = () => settings.ata == null ? '' : fmtAta(settings.ata) + ' ATA';
+  const dateShort = ms => { const d = new Date(ms); return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }); };
+  const clockTime = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+  // ---- Sound: Web Audio tones scheduled on the audio clock so they fire on time even if JS timers throttle.
+  let ac = null, silent = null, sched = [], schedKey = null, lastGesture = 0;
+  const audioReady = () => !!ac && ac.state === 'running';
+  const silentWav = () => {
+    const sr = 8000, n = sr, b = new ArrayBuffer(44 + n), v = new DataView(b);
+    const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true);
+    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr, true);
+    v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+    return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  };
+  const unlockAudio = () => {
+    try {
+      if (!ac) {
+        try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) {} // iOS 17+: media-playback session, so the silent switch and screen lock leave it alone
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (C) {
+          ac = new C();
+          // Tones scheduled while suspended sit on a stale clock; when the context (re)starts, lay them out again.
+          ac.onstatechange = () => { if (ac.state === 'running') scheduleCues(); render(); };
+        }
+      }
+      if (ac && ac.state !== 'running') { const p = ac.resume(); if (p && p.catch) p.catch(() => {}); }
+      // A looping silent <audio> keeps iOS treating the page as media playback, so tones play despite the ringer switch.
+      if (!silent) { silent = new Audio(silentWav()); silent.loop = true; silent.volume = 0.01; }
+      if (silent.paused) { const p = silent.play(); if (p && p.catch) p.catch(() => {}); }
+    } catch (e) {}
+    scheduleCues();
+  };
+  const tone = (at, freq, dur, gain, track) => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(gain, at + 0.012);
+    g.gain.setValueAtTime(gain, at + dur - 0.03); g.gain.linearRampToValueAtTime(0, at + dur);
+    o.connect(g); g.connect(ac.destination); o.start(at); o.stop(at + dur + 0.05);
+    if (track) sched.push(o);
+  };
+  const PAT = {
+    maskOff: [[0, 440, .35], [.5, 440, .35], [1, 330, .8]],
+    maskOn:  [[0, 880, .12], [.2, 880, .12], [.4, 1175, .45]],
+    tick:    [[0, 660, .09]],
+    warn:    [[0, 660, .07], [.16, 660, .07]],
+    done:    [[0, 523, .25], [.3, 659, .25], [.6, 784, .8]]
+  };
+  const pattern = (kind, at, track) => { for (const p of PAT[kind] || []) tone(at + p[0], p[1], p[2], 0.3, track); };
+  const playNow = kind => {
+    if (!ac || !settings.sound) return;
+    // Suspended context: only queue the tone if a gesture just happened (it will start any moment); otherwise it would fire stale later.
+    if (!audioReady() && Date.now() - lastGesture > 2000) return;
+    try { if (ac.state !== 'running') ac.resume(); pattern(kind, ac.currentTime + 0.02, false); } catch (e) {}
+  };
+  const clearSched = () => { for (const o of sched) { try { o.stop(0); } catch (e) {} } sched = []; schedKey = null; };
+  const boundaryCue = () => state.sub === 'sw' ? 'tick' : state.step >= steps.length - 1 ? 'done' : (steps[state.step + 1].kind === 'o2' ? 'maskOn' : 'maskOff');
+  const scheduleCues = () => {
+    clearSched();
+    if (!ac || state.status !== 'running' || !settings.sound) return;
+    const remain = (subDur() * 1000 - (Date.now() - state.startedAt)) / 1000;
+    if (remain <= 0) return;
+    try {
+      const at = ac.currentTime + remain;
+      if (state.sub === 'main' && remain > 10.5) pattern('warn', at - 10, true);
+      pattern(boundaryCue(), at, true);
+      schedKey = key();
+    } catch (e) {}
+  };
+  const stopSilentSoon = () => setTimeout(() => { if (silent && state.status !== 'running' && state.status !== 'paused') silent.pause(); }, 4000);
+
+  const speak = text => {
+    if (!settings.voice || !('speechSynthesis' in window)) return;
+    try {
+      if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text); u.lang = 'en-US'; u.rate = 1; speechSynthesis.speak(u);
+    } catch (e) {}
+  };
+  // Chrome refuses (and logs an error for) vibrate before any tap, e.g. when a finished session is caught up on reopen.
+  const buzz = () => { try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate([300, 150, 300]); } catch (e) {} };
+  const spokenDur = s => s >= 60 ? Math.round(s / 60) + (Math.round(s / 60) === 1 ? ' minute' : ' minutes') : s + ' seconds';
+  const announce = st => st.kind === 'chamber' ? 'Chamber air, ' + spokenDur(st.dur) + '.' : (st.kind === 'o2' ? 'Mask on. ' : 'Mask off. ') + st.label + ', ' + spokenDur(st.dur) + '.';
+  const doneLine = () => settings.mode === 'air' ? 'Session complete. Depressurize.' : 'Session complete. Mask off. Depressurize.';
+
+  // ---- Screen wake lock
+  let wl = null;
+  const keepAwake = async () => {
+    try {
+      if ('wakeLock' in navigator && !wl && document.visibilityState === 'visible') {
+        wl = await navigator.wakeLock.request('screen');
+        wl.addEventListener('release', () => { wl = null; render(); });
+        render();
+      }
+    } catch (e) {}
+  };
+  const releaseWake = () => { try { if (wl) wl.release(); } catch (e) {} wl = null; };
+
+  // ---- Actions
+  const jump = (i, withSwitch = true) => {
+    if (i < 0) return toIdle(true);
+    if (i >= steps.length) return finish();
+    const st = steps[i], t = Date.now();
+    if (state.status === 'idle') state.beganAt = t; // a session begins the first time the timer leaves idle
+    state.step = i; state.sub = withSwitch && st.sw > 0 ? 'sw' : 'main'; state.startedAt = t; state.doneAt = 0;
+    if (state.status === 'paused') state.pausedAt = t; else { state.status = 'running'; keepAwake(); }
+    scheduleCues();
+    if (state.status === 'running') { playNow('tick'); speak(announce(st)); }
+    save(); render();
+  };
+  const start = () => { unlockAudio(); state.swStart = 0; jump(0, false); };
+  const pause = () => { if (state.status !== 'running') return; state.status = 'paused'; state.pausedAt = Date.now(); clearSched(); try { if (silent) silent.pause(); } catch (e) {} save(); render(); };
+  const resume = () => { if (state.status !== 'paused') return; state.startedAt += Date.now() - state.pausedAt; state.status = 'running'; unlockAudio(); keepAwake(); save(); render(); };
+  const finish = () => {
+    clearSched(); state.status = 'done'; state.doneAt = Date.now(); logSession();
+    playNow('done'); speak(doneLine()); buzz(); releaseWake(); save(); render();
+  };
+  const toIdle = keepSw => { clearSched(); releaseWake(); const sw = keepSw ? state.swStart : 0; state = fresh(); state.swStart = sw; stopSilentSoon(); save(); render(); };
+  const pressurize = () => { state.swStart = Date.now(); save(); render(); };
+  const mainAction = () => { if (state.status === 'idle') start(); else if (state.status === 'running') pause(); else if (state.status === 'paused') resume(); else toIdle(false); };
+  const prev = () => { if (state.status === 'idle') pressurize(); else if (state.status === 'done') jump(steps.length - 1); else jump(state.step - 1); };
+  const next = () => { if (state.status === 'running' || state.status === 'paused') jump(state.step + 1); };
+
+  // ---- Clock: derived from timestamps, so a throttled, hidden, or reopened page catches up exactly.
+  const tick = () => {
+    if (state.status === 'running') {
+      const leftKey = key(), ev = [];
+      for (let g = 0; g < 5000; g++) {
+        const d = subDur() * 1000;
+        if (Date.now() - state.startedAt < d) break;
+        state.startedAt += d;
+        if (state.sub === 'sw') { state.sub = 'main'; ev.push({ t: 'tick' }); }
+        else if (state.step >= steps.length - 1) { state.status = 'done'; state.doneAt = state.startedAt; logSession(); ev.push({ t: 'done' }); break; }
+        else { state.step++; const st = steps[state.step]; state.sub = st.sw > 0 ? 'sw' : 'main'; ev.push({ t: st.kind === 'o2' ? 'maskOn' : 'maskOff', st }); }
+      }
+      if (ev.length) {
+        const last = ev[ev.length - 1], preplayed = ev.length === 1 && schedKey === leftKey;
+        sched = []; schedKey = null; // let already-fired tones finish
+        if (!preplayed) playNow(last.t);
+        if (last.st) { speak(announce(last.st)); buzz(); }
+        if (last.t === 'done') { speak(doneLine()); buzz(); releaseWake(); }
+        scheduleCues(); save();
+      }
+    }
+    render();
+  };
+
+  // ---- Render
+  let segs = [], lastSig = '', resetArmed = 0, clockCells = [];
+  const mainEl = document.querySelector('main');
+  const buildTimeline = () => {
+    const tl = $('timeline'), lb = $('labels'); tl.textContent = ''; lb.textContent = '';
+    segs = steps.map((st, i) => {
+      const el = document.createElement('div'); el.className = 'seg ' + st.kind; el.style.flex = stepLen(st) + ' 1 0px'; el.title = st.label;
+      const tap = () => { if (st.kind !== 'chamber') jump(i); };
+      const fill = document.createElement('i'); el.appendChild(fill); el.addEventListener('click', tap); tl.appendChild(el);
+      const l = document.createElement('span'); l.style.flex = stepLen(st) + ' 1 0px'; l.textContent = st.tl || st.short; l.title = st.label; l.addEventListener('click', tap); lb.appendChild(l);
+      if (st.kind === 'chamber') { el.classList.add('fixed'); l.classList.add('fixed'); }
+      return { el, fill, l };
+    });
+    if (typeof fitLabels === 'function') fitLabels();
+  };
+  // Size the readout to the stage width: each cell is a fixed em width, so the fit is exact for any font.
+  let clockEm = 0;
+  const fitClock = () => {
+    const stage = $('stage'), cs = getComputedStyle(stage);
+    const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    if (!(w > 0) || !clockEm) return;
+    $('clock').style.fontSize = Math.max(48, Math.min(200, Math.floor(w / clockEm * 0.97), Math.floor(innerHeight * 0.3))) + 'px';
+  };
+  const fitLabels = () => { for (const sg of segs) sg.l.classList.toggle('tight', sg.l.scrollWidth > sg.l.clientWidth + 1); };
+  if ('ResizeObserver' in window) new ResizeObserver(() => { fitClock(); fitLabels(); }).observe($('stage'));
+  window.addEventListener('resize', () => { fitClock(); fitLabels(); });
+  // Each digit sits in a fixed-width cell so the readout never shifts as digits change, whatever font is loaded.
+  const setClock = s => {
+    const el = $('clock');
+    if (clockCells.length !== s.length) {
+      el.textContent = '';
+      clockCells = Array.from(s, ch => { const c = document.createElement('span'); c.className = ch === ':' ? 'c colon' : 'c'; c.textContent = ch; el.appendChild(c); return c; });
+      clockEm = Array.from(s, ch => ch === ':' ? 0.28 : 0.6).reduce((a, b) => a + b, 0); fitClock();
+      return;
+    }
+    for (let i = 0; i < s.length; i++) {
+      if (clockCells[i].textContent !== s[i]) { clockCells[i].textContent = s[i]; clockCells[i].className = s[i] === ':' ? 'c colon' : 'c'; }
+    }
+  };
+  const setBtn = (b, label, small, disabled, icon) => {
+    b.querySelector('b').textContent = label;
+    const s = b.querySelector('small'); s.textContent = small || ''; s.hidden = !small;
+    b.classList.toggle('noicon', !icon); b.disabled = !!disabled;
+  };
+  const setText = (id, t) => { const el = $(id); if (el.textContent !== t) el.textContent = t; };
+  const render = () => {
+    const n = steps.length, st = cur(), active = state.status === 'running' || state.status === 'paused', airMode = settings.mode === 'air';
+    let phase, kicker, chip, clock, name, title, barPct = 0, dim = false;
+    if (state.status === 'idle') {
+      phase = 'idle'; chip = airMode ? 'No mask' : 'Mask off'; dim = true;
+      const go = airMode ? 'press Start once at pressure' : 'press Start when the mask goes on';
+      if (state.swStart) { kicker = 'Pressurizing'; clock = fmt((Date.now() - state.swStart) / 1000); name = 'Usually 8–12 min · ' + go; title = clock + ' Pressurizing · HBOT'; }
+      else { kicker = 'Ready'; clock = fmt(steps[0].dur); name = 'Pressurize, then ' + go; title = 'HBOT Timer'; }
+    } else if (state.status === 'done') {
+      phase = 'done'; kicker = 'Complete'; chip = airMode ? 'No mask' : 'Mask off'; clock = fmt((Date.now() - state.doneAt) / 1000);
+      name = 'Depressurize · session ' + fmt(total()) + ' · counting since finish'; title = 'Done ' + clock + ' · HBOT'; barPct = 100;
+    } else {
+      clock = fmt(Math.ceil((subDur() * 1000 - subElapsedMs()) / 1000));
+      chip = st.kind === 'o2' ? 'Mask on' : st.kind === 'chamber' ? 'No mask' : 'Mask off';
+      if (state.sub === 'sw') {
+        phase = 'sw'; kicker = 'Switch mask';
+        name = (st.kind === 'o2' ? 'Put the mask on · ' : 'Take the mask off · ') + st.label + ' · ' + fmt(st.dur);
+        title = clock + ' Switch → ' + st.short;
+      } else if (st.kind === 'chamber') {
+        phase = 'air'; kicker = 'Chamber air · ' + Math.round(st.dur / 60) + ' min';
+        name = 'Next · depressurize'; title = clock + ' Chamber air';
+      } else {
+        phase = st.kind; kicker = (st.kind === 'o2' ? 'Oxygen' : 'Air break') + ' · ' + st.n + ' of ' + st.of;
+        const nx = steps[state.step + 1];
+        name = nx ? 'Next · ' + nx.label + ' · ' + fmt(nx.dur) : 'Next · done · depressurize';
+        title = clock + ' ' + st.short + (st.kind === 'o2' ? ' mask on' : ' mask off');
+      }
+      barPct = subDur() > 0 ? subElapsedMs() / (subDur() * 10) : 0;
+      if (state.status === 'paused') { chip = 'Paused'; dim = true; title = '⏸ ' + title; }
+    }
+    if (mainEl.dataset.phase !== phase) { mainEl.dataset.phase = phase; mainEl.style.setProperty('--phase', 'var(--' + phase + ')'); }
+    setText('kicker', kicker); setText('chip', chip); setText('name', name); setClock(clock);
+    $('stage').classList.toggle('dim', dim);
+    const bw = barPct.toFixed(2) + '%'; if ($('bar').style.width !== bw) $('bar').style.width = bw;
+    if (document.title !== title) document.title = title;
+    let l1, l2;
+    const ataSfx = ataLabel() ? ' · ' + ataLabel() : '';
+    if (state.status === 'idle') { l1 = state.swStart ? 'Pressurizing · ' + clock : 'HBOT Timer'; l2 = 'Ready' + ataSfx; }
+    else if (state.status === 'done') { l1 = 'Complete · ' + clock + ' since finish'; l2 = airMode ? 'Depressurize' : 'Mask off · depressurize'; }
+    else if (state.status === 'paused') { l1 = 'Paused · ' + clock; l2 = (state.sub === 'sw' ? 'Switch mask' : kicker) + ataSfx; }
+    else if (state.sub === 'sw') { l1 = clock + ' · Switch mask'; l2 = name; }
+    else if (st.kind === 'chamber') { l1 = clock + ' · Chamber air'; l2 = 'No mask · ' + Math.round(st.dur / 60) + ' min' + ataSfx; }
+    else { l1 = clock + ' · ' + chip; l2 = kicker + ataSfx; }
+    updateMediaSession(l1, l2, phase);
+    setText('now', clockTime(Date.now()));
+    const needTap = active && settings.sound && !audioReady() && Date.now() - lastGesture > 3000;
+    if ($('banner').hidden === needTap) $('banner').hidden = !needTap;
+
+    const sig = [state.status, state.step, state.sub, state.swStart ? 1 : 0, n, settings.mode].join('|');
+    if (sig !== lastSig) {
+      lastSig = sig;
+      const P = $('prev'), M = $('main'), N = $('next');
+      if (state.status === 'idle') {
+        setBtn(P, state.swStart ? 'Restart' : 'Pressurize', 'stopwatch', false, false);
+        setBtn(M, 'Start', steps[0].short + ' · ' + fmt(steps[0].dur), false, false);
+        setBtn(N, 'Next', '—', true, true);
+      } else if (state.status === 'done') {
+        setBtn(P, 'Prev', steps[n - 1].short, false, true); setBtn(M, 'New session', '', false, false); setBtn(N, 'Next', '—', true, true);
+      } else {
+        setBtn(P, 'Prev', state.step ? steps[state.step - 1].short : 'Ready', false, true);
+        setBtn(M, state.status === 'running' ? 'Pause' : 'Resume', '', false, false);
+        setBtn(N, 'Next', state.step < n - 1 ? steps[state.step + 1].short : 'Finish', false, true);
+      }
+      for (const id of ['s-o2', 's-air', 's-sw']) $(id).disabled = state.status !== 'idle';
+      for (const [id, m] of [['mode-o2', 'o2'], ['mode-air', 'air']]) { const b = $(id); b.setAttribute('aria-pressed', String(settings.mode === m)); b.disabled = active; }
+      $('modes').classList.toggle('locked', active); $('modes').title = active ? 'Locked while a session runs' : '';
+      setText('step-lbl', airMode ? 'Minutes' : 'O₂ periods');
+      $('cyc-minus').setAttribute('aria-label', airMode ? '5 minutes shorter' : 'Remove an O₂ period');
+      $('cyc-plus').setAttribute('aria-label', airMode ? '5 minutes longer' : 'Add an O₂ period');
+    }
+    renderStepper();
+
+    segs.forEach((sg, i) => {
+      const past = state.status === 'done' || (active && i < state.step), curr = active && i === state.step;
+      sg.el.classList.toggle('past', past); sg.el.classList.toggle('cur', curr); sg.l.classList.toggle('cur', curr);
+      const w = past ? '100%' : curr ? (stepElapsed() / stepLen(steps[i]) * 100).toFixed(2) + '%' : '0%';
+      if (sg.fill.style.width !== w) sg.fill.style.width = w;
+    });
+
+    const el = sessionElapsed(), tot = total(), rem = Math.max(0, tot - el);
+    setText('elapsed', fmt(el)); setText('remaining', fmt(rem));
+    let eL, eV;
+    if (state.status === 'running') { eL = 'Ends'; eV = '~' + clockTime(Date.now() + rem * 1000); }
+    else if (state.status === 'paused') { eL = 'Paused'; eV = '—'; }
+    else if (state.status === 'done') { eL = 'Finished'; eV = clockTime(state.doneAt); }
+    else { eL = 'Total'; eV = fmt(tot); }
+    setText('endsLbl', eL); setText('ends', eV);
+    setText('plan', airMode ? 'Chamber air · ' + settings.chamber + ' min' : settings.cycles + ' × ' + settings.o2 + ' min O₂ · ' + settings.air + ' min air · ' + fmt(tot));
+    setText('status', wl ? 'Screen stays awake' : (state.status === 'running' ? 'Screen may sleep' : ''));
+    const R = $('reset'), armed = Date.now() - resetArmed < 3000, rt = armed ? 'Tap again to reset' : 'Reset';
+    if (R.textContent !== rt) R.textContent = rt;
+    R.classList.toggle('armed', armed);
+  };
+
+  // ---- Session log
+  let armedRemove = 0, armedRemoveAt = 0;
+  const renderHistory = () => {
+    const isAir = h => h.mode === 'air', mins = x => x >= 60 ? (Math.round(x / 6) / 10) + ' h' : x + ' min';
+    const n = history.length, o2min = history.reduce((a, h) => a + (isAir(h) ? 0 : (h.cycles * h.o2 || 0)), 0), recent = history.filter(h => h.ended >= Date.now() - 30 * 864e5).length;
+    const anyO2 = !n || history.some(h => !isAir(h)), airmin = history.reduce((a, h) => a + (isAir(h) ? Math.round(h.planned / 60) : 0), 0);
+    setText('h-count', String(n));
+    setText('h-o2l', anyO2 ? 'O₂ time' : 'At pressure'); // a log of chamber-air sessions only has no O₂ time to show
+    setText('h-o2', mins(anyO2 ? o2min : airmin));
+    setText('h-30', String(recent));
+    setText('logsum', n ? n + (n === 1 ? ' session' : ' sessions') + ' · last ' + dateShort(history[n - 1].ended) : 'none yet');
+    const ul = $('hist'); ul.textContent = '';
+    if (!n) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = 'Completed sessions appear here.'; ul.appendChild(li); return; }
+    for (const h of history.slice().reverse()) {
+      const li = document.createElement('li');
+      const when = document.createElement('span'); when.className = 'when'; when.textContent = dateShort(h.ended) + ' · ' + clockTime(h.ended);
+      const wall = Math.round((h.ended - h.began) / 1000), off = Math.abs(wall - h.planned) > 90 && h.began > 0;
+      const what = document.createElement('span'); what.className = 'what';
+      what.textContent = (h.ata != null ? fmtAta(h.ata) + ' ATA · ' : '') + (isAir(h) ? 'Chamber air' : h.cycles + ' × ' + h.o2 + ' min O₂ / ' + h.air + ' min air') + ' · ' + fmt(h.planned) + (off ? ' (took ' + fmt(wall) + ')' : '');
+      const rm = document.createElement('button'); rm.type = 'button';
+      const armed = armedRemove === h.began && Date.now() - armedRemoveAt < 3000;
+      rm.textContent = armed ? 'Sure?' : 'Remove'; rm.classList.toggle('armed', armed); rm.setAttribute('aria-label', 'Remove this session');
+      rm.addEventListener('click', () => {
+        if (armedRemove === h.began && Date.now() - armedRemoveAt < 3000) { history = history.filter(x => x.began !== h.began); armedRemove = 0; saveHistory(); renderHistory(); }
+        else { armedRemove = h.began; armedRemoveAt = Date.now(); renderHistory(); setTimeout(renderHistory, 3100); }
+      });
+      li.appendChild(when); li.appendChild(what); li.appendChild(rm); ul.appendChild(li);
+    }
+  };
+  // Called whenever the timer reaches done. Keyed by when the session began, so finishing again after adding a period updates the entry instead of duplicating it.
+  const logSession = () => {
+    const planned = total(), ended = state.doneAt || Date.now(), began = state.beganAt || ended - planned * 1000;
+    const entry = settings.mode === 'air'
+      ? { began, ended, ata: settings.ata, mode: 'air', chamber: settings.chamber, planned }
+      : { began, ended, ata: settings.ata, o2: settings.o2, air: settings.air, sw: settings.sw, cycles: settings.cycles, planned };
+    const i = history.findIndex(h => h.began === began);
+    if (i >= 0) history[i] = entry; else history.push(entry);
+    history.sort((a, b) => a.ended - b.ended); saveHistory(); renderHistory();
+  };
+
+  // ---- Lock screen / Now Playing (iOS, Android, desktop media keys)
+  // iOS already shows a playing page's title as the Now Playing title; Media Session lets us set both lines, phase-colored artwork,
+  // a progress bar (which iOS keeps advancing on its own even while page JS is frozen behind the lock screen) and the pause/skip buttons.
+  const ms = 'mediaSession' in navigator ? navigator.mediaSession : null;
+  const ART = { o2: '#1d4fd8', air: '#0f7a5a', sw: '#b4640a', done: '#4b3fa6', idle: '#3c4249' }, artCache = {};
+  const artFor = c => artCache[c] || (artCache[c] = [{ src: icon(96, 0.22, c), sizes: '96x96', type: 'image/png' }, { src: icon(512, 0.22, c), sizes: '512x512', type: 'image/png' }]);
+  let msKey = '', msPosKey = '', msPosAt = 0;
+  const updateMediaSession = (l1, l2, phase) => {
+    if (!ms) return;
+    const k = l1 + '|' + l2 + '|' + phase;
+    if (k !== msKey) { msKey = k; try { ms.metadata = new MediaMetadata({ title: l1, artist: l2, album: 'HBOT Timer', artwork: artFor(ART[phase] || ART.idle) }); } catch (e) {} }
+    try {
+      const running = state.status === 'running', active = running || state.status === 'paused';
+      ms.playbackState = running || state.status === 'done' ? 'playing' : active ? 'paused' : 'none'; // done keeps the card up while depressurizing
+      const pk = key() + '|' + state.status;
+      if (active && typeof ms.setPositionState === 'function' && (pk !== msPosKey || Date.now() - msPosAt > 5000)) {
+        msPosKey = pk; msPosAt = Date.now();
+        const d = subDur(), p = Math.max(0, Math.min(d, subElapsedMs() / 1000));
+        if (d > 0) ms.setPositionState({ duration: d, position: p, playbackRate: 1 });
+      }
+    } catch (e) {}
+  };
+
+  // ---- Wiring
+  const syncSettingsUI = () => {
+    $('s-o2').value = settings.o2; $('s-air').value = settings.air; $('s-sw').value = settings.sw; $('s-cycles').value = settings.cycles; $('s-chamber').value = settings.chamber; $('s-ata').value = settings.ata == null ? '' : settings.ata;
+    $('s-sound').checked = settings.sound; $('s-voice').checked = settings.voice;
+    for (const f of document.querySelectorAll('.o2f')) f.hidden = settings.mode === 'air';
+    for (const f of document.querySelectorAll('.airf')) f.hidden = settings.mode !== 'air';
+  };
+  // The number of O₂ periods can change at any time; periods already started are always kept.
+  const minCycles = () => { if (settings.mode !== 'o2' || (state.status !== 'running' && state.status !== 'paused')) return 1; const st = cur(); if (!st || st.kind === 'chamber') return 1; return st.kind === 'o2' ? st.n : st.n + 1; };
+  // A chamber-air session's length can change at any time too, but never below the time already spent at pressure.
+  const minChamber = () => { if ((state.status !== 'running' && state.status !== 'paused') || !cur() || cur().kind !== 'chamber') return 1; return Math.max(1, Math.ceil(subElapsedMs() / 60000)); };
+  // [lowest, highest, current] for the stepper; a finished chamber-air session can only be extended.
+  const stepperRange = () => settings.mode === 'air' ? [state.status === 'done' ? settings.chamber : minChamber(), 240, settings.chamber] : [minCycles(), 10, settings.cycles];
+  const renderStepper = () => {
+    const [lo, hi, v] = stepperRange(), mn = $('cyc-minus'), pl = $('cyc-plus'), f = settings.mode === 'air' ? $('s-chamber') : $('s-cycles');
+    setText('cyc-n', String(v));
+    if (mn.disabled !== (v <= lo)) mn.disabled = v <= lo;
+    if (pl.disabled !== (v >= hi)) pl.disabled = v >= hi;
+    if (f.min !== String(lo)) f.min = lo;
+  };
+  const applySettings = () => {
+    sanitize();
+    if (settings.mode === 'air') settings.chamber = Math.max(settings.chamber, minChamber()); else settings.cycles = Math.max(settings.cycles, minCycles());
+    steps = build(settings);
+    if (state.step >= steps.length) state.step = steps.length - 1;
+    if (state.sub === 'sw' && !steps[state.step].sw) state.sub = 'main';
+    buildTimeline(); lastSig = ''; syncSettingsUI(); scheduleCues();
+  };
+  const blank = n => String(n).trim() === '' || !Number.isFinite(Number(n)); // a cleared field keeps the current value instead of snapping to the minimum
+  const setCycles = n => {
+    if (blank(n)) { syncSettingsUI(); return; }
+    const wasDone = state.status === 'done', oldLen = steps.length;
+    settings.cycles = clamp(n, minCycles(), 10, settings.cycles); applySettings(); save();
+    if (wasDone && steps.length > oldLen) return jump(oldLen); // after a finished session, an added period starts with its air break
+    render();
+  };
+  // Chamber-air length: the countdown keeps running and only the end moves. Adding time after the finish resumes at pressure.
+  const setChamber = n => {
+    if (blank(n)) { syncSettingsUI(); return; }
+    const wasDone = state.status === 'done', oldDur = steps[0].dur;
+    settings.chamber = clamp(n, stepperRange()[0], 240, settings.chamber); applySettings(); save();
+    if (wasDone && settings.chamber * 60 > oldDur) {
+      state.status = 'running'; state.step = 0; state.sub = 'main'; state.startedAt = Date.now() - oldDur * 1000; state.doneAt = 0;
+      unlockAudio(); keepAwake(); playNow('tick'); speak('Chamber air, ' + spokenDur(settings.chamber * 60 - oldDur) + ' more.'); save();
+    }
+    render();
+  };
+  // Breathing mode is chosen between sessions; switching after a finished session clears it first.
+  const setMode = m => {
+    if (m === settings.mode || state.status === 'running' || state.status === 'paused') return;
+    if (state.status === 'done') toIdle(false);
+    settings.mode = m; applySettings(); save(); render();
+  };
+  for (const k of ['o2', 'air', 'sw']) $('s-' + k).addEventListener('change', e => {
+    if (state.status !== 'idle') { syncSettingsUI(); return; }
+    settings[k] = e.target.value; applySettings(); save(); render();
+  });
+  $('s-cycles').addEventListener('change', e => setCycles(e.target.value));
+  $('s-chamber').addEventListener('change', e => setChamber(e.target.value));
+  $('s-ata').addEventListener('change', e => { settings.ata = e.target.value; sanitize(); syncSettingsUI(); save(); render(); });
+  $('s-sound').addEventListener('change', e => { settings.sound = e.target.checked; save(); if (settings.sound) unlockAudio(); else clearSched(); render(); });
+  $('s-voice').addEventListener('change', e => { settings.voice = e.target.checked; save(); if (settings.voice) speak('Voice on.'); });
+
+  const on = (id, fn) => $(id).addEventListener('click', e => { fn(); e.currentTarget.blur(); });
+  on('prev', prev); on('next', next); on('main', mainAction);
+  // In chamber-air mode the stepper moves the session length by 5 minutes, snapping to multiples of 5.
+  on('cyc-minus', () => settings.mode === 'air' ? setChamber(Math.ceil(settings.chamber / 5) * 5 - 5) : setCycles(settings.cycles - 1));
+  on('cyc-plus', () => settings.mode === 'air' ? setChamber(Math.floor(settings.chamber / 5) * 5 + 5) : setCycles(settings.cycles + 1));
+  on('mode-o2', () => setMode('o2')); on('mode-air', () => setMode('air'));
+  on('reset', () => { if (Date.now() - resetArmed < 3000) { resetArmed = 0; toIdle(false); } else { resetArmed = Date.now(); render(); setTimeout(render, 3100); } });
+  const gesture = () => { lastGesture = Date.now(); if (state.status !== 'idle' && settings.sound && !audioReady()) unlockAudio(); };
+  document.addEventListener('pointerdown', gesture, { passive: true, capture: true });
+  document.addEventListener('keydown', e => {
+    const tag = e.target && e.target.tagName;
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag)) return;
+    gesture();
+    if (e.code === 'Space') { if (tag === 'BUTTON') return; e.preventDefault(); mainAction(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') { save(); return; }
+    tick();
+    if (state.status === 'running') { keepAwake(); if (ac && ac.state !== 'running') unlockAudio(); }
+  });
+  window.addEventListener('pagehide', save);
+  window.addEventListener('beforeunload', save);
+  // Another tab of this page (same browser) changed the session: follow it instead of fighting over the saved state.
+  window.addEventListener('storage', e => {
+    try {
+      if (e.key === KEY_STATE && e.newValue && e.newValue !== JSON.stringify(state)) {
+        const before = state.status;
+        if (adopt(JSON.parse(e.newValue))) { lastSavedJson = e.newValue; lastSig = ''; scheduleCues(); if (before === 'idle' && state.status === 'running') keepAwake(); tick(); }
+      } else if (e.key === KEY_HIST) {
+        history = loadHistory(); renderHistory();
+      } else if (e.key === KEY_SETTINGS && e.newValue) {
+        const s = Object.assign({}, DEF, JSON.parse(e.newValue));
+        if (state.status !== 'idle') { s.o2 = settings.o2; s.air = settings.air; s.sw = settings.sw; s.mode = settings.mode; }
+        settings = s; applySettings(); render();
+      }
+    } catch (err) {}
+  });
+
+  // App icon drawn on a canvas: used for the manifest, the home-screen icon and the Now Playing artwork, so the page stays a single file.
+  const icon = (size, radius, color) => {
+      const c = document.createElement('canvas'); c.width = c.height = size; const x = c.getContext('2d'), r = size * radius;
+      x.beginPath(); x.moveTo(r, 0); x.arcTo(size, 0, size, size, r); x.arcTo(size, size, 0, size, r); x.arcTo(0, size, 0, 0, r); x.arcTo(0, 0, size, 0, r); x.closePath();
+      x.fillStyle = color || '#1d4fd8'; x.fill();
+      x.strokeStyle = '#fff'; x.lineCap = 'round'; x.lineWidth = size * 0.08;
+      x.beginPath(); x.arc(size / 2, size / 2, size * 0.31, -Math.PI / 2, Math.PI * 1.15); x.stroke();
+      x.fillStyle = '#fff'; x.font = '600 ' + Math.round(size * 0.27) + 'px -apple-system,BlinkMacSystemFont,Helvetica,Arial,sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillText('O\u2082', size / 2, size / 2 + size * 0.02);
+      return c.toDataURL('image/png');
+  };
+  // Installable on phones: the manifest is generated at runtime so start_url and scope match wherever the page is hosted.
+  try {
+    const here = location.href.replace(/[#?].*$/, '');
+    const man = { name: 'HBOT Timer', short_name: 'HBOT', description: 'Session timer for hyperbaric sessions: oxygen periods with air breaks and mask-switch cues, or plain chamber air.', id: here, start_url: here, scope: here.replace(/[^/]*$/, ''), display: 'standalone', background_color: '#0e1013', theme_color: '#0e1013', icons: [{ src: icon(192, 0.22), sizes: '192x192', type: 'image/png' }, { src: icon(512, 0.22), sizes: '512x512', type: 'image/png' }] };
+    const link = document.createElement('link'); link.rel = 'manifest'; link.href = URL.createObjectURL(new Blob([JSON.stringify(man)], { type: 'application/manifest+json' })); document.head.appendChild(link);
+    const touch = document.createElement('link'); touch.rel = 'apple-touch-icon'; touch.href = icon(180, 0); document.head.appendChild(touch);
+  } catch (e) {}
+
+  buildTimeline(); syncSettingsUI(); renderHistory();
+  if (ms) for (const [a, fn] of [['play', resume], ['pause', pause], ['nexttrack', next], ['previoustrack', prev]]) { try { ms.setActionHandler(a, fn); } catch (e) {} }
+  tick(); // catches up any phases that passed while the page was closed, then renders
+  if (state.status === 'running') keepAwake();
+  if (restored) unlockAudio(); // may stay suspended until the first tap; the banner says so
+  // A worker's timer is not throttled in background tabs, so the tab title and cues stay current while another tab is in front.
+  let worker = null;
+  try {
+    worker = new Worker(URL.createObjectURL(new Blob(['setInterval(function(){postMessage(0)},250)'], { type: 'text/javascript' })));
+    worker.onmessage = () => tick();
+  } catch (e) { worker = null; }
+  setInterval(tick, worker ? 1000 : 250);
+})();
+</script>
+</body>
+</html>
